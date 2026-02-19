@@ -2,35 +2,42 @@ import pandas as pd
 import os
 import logging
 
-# Logging Setup: Terminal me professional messages dikhayega
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 def load_data(file_path: str) -> pd.DataFrame:
     """
-    Loads data from CSV, Excel, or JSON dynamically based on file extension.
+    Loads data and REMOVES USELESS COLUMNS (IDs, Names).
     """
     try:
-        # Check agar file exist karti hai
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"File nahi mili bro: {file_path}")
+            raise FileNotFoundError(f"File not found: {file_path}")
 
-        # File extension nikalo (e.g., .csv or .xlsx)
-        _, file_extension = os.path.splitext(file_path)
-        
-        logger.info(f"Detected file type: {file_extension}")
-
-        # Data-Agnostic Loading Logic
-        if file_extension.lower() == '.csv':
-            df = pd.read_csv(file_path)
-        elif file_extension.lower() in ['.xlsx', '.xls']:
+        # Load Data
+        if file_path.endswith(".csv"):
+            try:
+                df = pd.read_csv(file_path, encoding='utf-8')
+            except UnicodeDecodeError:
+                df = pd.read_csv(file_path, encoding='latin-1')
+        elif file_path.endswith(".xlsx"):
             df = pd.read_excel(file_path)
-        elif file_extension.lower() == '.json':
-            df = pd.read_json(file_path)
         else:
-            raise ValueError(f"Unsupported format: {file_extension}")
+            raise ValueError("Unsupported file format")
 
-        logger.info(f"✅ Data loaded successfully with shape {df.shape}")
+        # --- NEW: DROP USELESS COLUMNS ---
+        # Ye list mein wo naam daal jo model ko confuse karte hain
+        useless_cols = ["Customer ID", "PassengerId", "Name", "Ticket", "Date", "User ID"]
+        
+        # Agar column data mein hai, to uda do
+        for col in useless_cols:
+            # Case insensitive check (agar 'customer id' likha ho to bhi pakad le)
+            matching_cols = [c for c in df.columns if c.lower() == col.lower()]
+            if matching_cols:
+                df = df.drop(columns=matching_cols)
+                logger.info(f"🗑️ Dropped useless column: {matching_cols}")
+        # ---------------------------------
+
+        logger.info(f"✅ Data Loaded! Shape: {df.shape}")
         return df
 
     except Exception as e:
