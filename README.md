@@ -102,6 +102,17 @@ This will:
 
 ---
 
-## 📝 License
+## � Team Members
+
+| Name | GitHub |
+|------|--------|
+| Tirth Patel | [@tirthpatel90](https://github.com/tirthpatel90) |
+| Hitesh Prajapati | [@hprajapati1606-ux](https://github.com/hprajapati1606-ux) |
+| Prince Patel | [@prince3235](https://github.com/prince3235) |
+| Riya Patel | [@riya119215](https://github.com/riya119215) |
+
+---
+
+## �📝 License
 
 This project is open source and available under the MIT License.
