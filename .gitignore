@@ -1,0 +1,22 @@
+# --- Python & System Files ---
+__pycache__/
+*.pyc
+.DS_Store
+
+# --- Virtual Environment (Isse upload nahi karte) ---
+.venv/
+venv/
+env/
+
+# --- Heavy Data & Models (Ye Local hi rehne chahiye) ---
+data/
+models/
+*.pkl
+
+# --- Logs & Artifacts ---
+mlruns/
+logs/
+
+# --- IDE Settings ---
+.vscode/
+.idea/
