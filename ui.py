@@ -4,12 +4,14 @@ import os
 import joblib
 import json
 import requests
-import altair as alt  # For beautiful charts
+import altair as alt
+import shap  
+import matplotlib.pyplot as plt 
 from streamlit_lottie import st_lottie
 
 # Import Backend Modules
 from src.ingestion.ingest_data import load_data
-from src.preprocessing.preprocess import clean_raw_data, prepare_for_training # NEW IMPORTS
+from src.preprocessing.preprocess import clean_raw_data, prepare_for_training
 from src.training.train import train_model
 
 # Page Config
@@ -30,7 +32,7 @@ with col1:
 with col2:
     st.title("🧠 Universal MLOps Pipeline")
     st.write("### Data Agnostic Modeling System")
-    st.write("Automated Ingestion • Preprocessing • Training • Inference")
+    st.write("Automated Ingestion • Preprocessing • Training • Inference • Explainability")
 
 st.markdown("---")
 
@@ -44,15 +46,14 @@ if uploaded_file:
     file_path = os.path.join(save_dir, uploaded_file.name)
     with open(file_path, "wb") as f: f.write(uploaded_file.getbuffer())
     
-    # Load raw data globally so all tabs can use it
+    # Load raw data globally
     df_raw = load_data(file_path)
     
-    # Universal Cleaning (Runs instantly so it's ready for Tab 1 & 2)
+    # Universal Cleaning
     df_cleaned = clean_raw_data(df_raw)
 
     st.markdown("---")
     
-    # --- THE 3 NEW TABS ---
     tab1, tab2, tab3 = st.tabs(["🧹 **Clean & Download**", "⚙️ **Train Model**", "🔮 **Prediction Interface**"])
 
     # ==========================================
@@ -61,11 +62,8 @@ if uploaded_file:
     with tab1:
         st.subheader("🧹 Universal Data Cleaner")
         st.write("Missing values filled intelligently. Zero rows deleted. Ready for analysis!")
-        
-        st.write("📊 Cleaned Data Preview:")
         st.dataframe(df_cleaned.head(50))
         
-        # Download Button
         csv_data = df_cleaned.to_csv(index=False).encode('utf-8')
         st.download_button(
             label="📥 Download Cleaned Data (CSV)",
@@ -80,10 +78,8 @@ if uploaded_file:
     # ==========================================
     with tab2:
         st.subheader("⚙️ Step 2: Train AI Model")
-        
         all_cols = df_cleaned.columns.tolist()
         
-        # UI for Target and Drop Columns
         col_t, col_d = st.columns(2)
         with col_t:
             target_col = st.selectbox("🎯 Select Target Column to Predict:", all_cols, index=len(all_cols)-1)
@@ -94,7 +90,7 @@ if uploaded_file:
         if st.button("🚀 Initialize Training Pipeline", type="primary"):
             with st.spinner("Processing Pipeline & Training Model..."):
                 try:
-                    # 1. Save Decoder Map (Tera original silent logic, untouched!)
+                    # Target Mapper
                     if df_cleaned[target_col].dtype == 'object':
                         unique_values = sorted(df_cleaned[target_col].dropna().unique().tolist())
                         target_map = {i: v for i, v in enumerate(unique_values)}
@@ -103,20 +99,18 @@ if uploaded_file:
                     else:
                         if os.path.exists("models/target_map.json"): os.remove("models/target_map.json")
 
-                    # 2. Prepare for ML (Encode + Drop Columns)
+                    # ML Prep
                     df_ml = prepare_for_training(df_cleaned, drop_columns=drop_cols)
-                    
-                    # Save exact schema for inference tab
                     os.makedirs("data/processed", exist_ok=True)
                     df_ml.to_csv("data/processed/clean_data.csv", index=False)
                     
-                    # 3. Train Model
+                    # Train
                     metrics = train_model("data/processed/clean_data.csv", "models/model.pkl", target_col)
                     
                     st.success(f"✅ Training Complete! Model optimized for target: '{target_col}'")
-                    st.balloons() # Tera favourite!
+                    st.balloons()
                     
-                    # Show Accuracy
+                    # Show ONLY Metrics (No Champion Model UI)
                     if "accuracy" in metrics:
                         st.metric("🎯 Accuracy", f"{metrics['accuracy']}%")
                     elif "r2_score" in metrics:
@@ -126,10 +120,10 @@ if uploaded_file:
                     st.error(f"❌ Pipeline Error: {e}")
 
     # ==========================================
-    # TAB 3: PREDICTION INTERFACE (100% UNTOUCHED)
+    # TAB 3: PREDICTION & XAI
     # ==========================================
     with tab3:
-        st.subheader("🔮 Inference Mode")
+        st.subheader("🔮 Inference & Explainability")
         model_path = "models/model.pkl"
         meta_path = "models/model_meta.pkl"
         
@@ -156,7 +150,6 @@ if uploaded_file:
                         input_df = pd.DataFrame([input_data])
                         prediction = model.predict(input_df)[0]
                         
-                        # --- DECODER LOGIC (Silent) ---
                         final_output = prediction
                         map_path = "models/target_map.json"
                         target_map = {}
@@ -168,27 +161,45 @@ if uploaded_file:
 
                         st.markdown("---")
                         
-                        # 1. Simple Result
+                        # 1. PREDICTION RESULT
                         st.success(f"💡 Prediction Result: **{final_output}**")
                         
-                        # 2. The Cool Chart
+                        # 2. XAI (EXPLAINABLE AI)
+                        st.write("### 🧠 AI X-Ray (Why did I predict this?)")
+                        with st.spinner("Scanning AI Brain..."):
+                            try:
+                                background_data = df_schema.drop(columns=[target_col])
+                                explainer = shap.Explainer(model, background_data)
+                                shap_values = explainer(input_df)
+                                
+                                # Plotting Fix for Multi-class output (like male/female)
+                                fig, ax = plt.subplots(figsize=(8, 4))
+                                
+                                # Extract explanation for the first instance
+                                exp = shap_values[0]
+                                
+                                # If it's a matrix (multi-class), select the first class's explanation
+                                if len(exp.shape) > 1:
+                                    exp = exp[:, 0]
+                                    
+                                shap.plots.waterfall(exp, show=False)
+                                plt.tight_layout()
+                                st.pyplot(fig)
+                                
+                                st.info("👆 **How to read this:** Red bars ne model ko is result ki taraf push kiya, aur Blue bars is result ke against the.")
+                            except Exception as e:
+                                st.warning(f"⚠️ XAI is model ke liye abhi support nahi kar raha. (Error: {e})")
+                                
+                        st.markdown("---")
+                        
+                        # 3. DONUT CHART (If probability exists)
                         if hasattr(model, "predict_proba"):
                             proba = model.predict_proba(input_df)[0]
-                            
-                            if target_map:
-                                labels = [target_map[str(i)] for i in range(len(proba))]
-                            else:
-                                labels = [f"Class {i}" for i in range(len(proba))]
+                            labels = [target_map[str(i)] for i in range(len(proba))] if target_map else [f"Class {i}" for i in range(len(proba))]
                                 
-                            chart_data = pd.DataFrame({
-                                "Category": labels,
-                                "Confidence": proba
-                            })
+                            chart_data = pd.DataFrame({"Category": labels, "Confidence": proba})
 
-                            # DONUT CHART 
-                            base = alt.Chart(chart_data).encode(
-                                theta=alt.Theta("Confidence", stack=True)
-                            )
+                            base = alt.Chart(chart_data).encode(theta=alt.Theta("Confidence", stack=True))
                             pie = base.mark_arc(outerRadius=120, innerRadius=80).encode(
                                 color=alt.Color("Category"),
                                 order=alt.Order("Confidence", sort="descending"),
