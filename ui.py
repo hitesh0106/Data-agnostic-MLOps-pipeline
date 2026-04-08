@@ -6,16 +6,16 @@ import json
 import requests
 import altair as alt
 import shap  
-import matplotlib.pyplot as plt 
+import numpy as np
 from streamlit_lottie import st_lottie
-
-# Import Backend Modules
-from src.ingestion.ingest_data import load_data
-from src.preprocessing.preprocess import clean_raw_data, prepare_for_training
-from src.training.train import train_model
 
 # Page Config
 st.set_page_config(page_title="Universal MLOps Pipeline", page_icon="🧠", layout="wide")
+
+# Import Backend Modules 
+from src.ingestion.ingest_data import load_data
+from src.preprocessing.preprocess import clean_raw_data, prepare_for_training
+from src.training.train import train_model
 
 def load_lottieurl(url):
     try:
@@ -74,23 +74,17 @@ if uploaded_file:
         )
 
     # ==========================================
-    # TAB 2: TRAIN MODEL
+    # TAB 2: TRAIN MODEL (CLEANED UI)
     # ==========================================
     with tab2:
         st.subheader("⚙️ Step 2: Train AI Model")
         all_cols = df_cleaned.columns.tolist()
         
-        col_t, col_d = st.columns(2)
-        with col_t:
-            target_col = st.selectbox("🎯 Select Target Column to Predict:", all_cols, index=len(all_cols)-1)
-        with col_d:
-            available_drop_cols = [c for c in all_cols if c != target_col]
-            drop_cols = st.multiselect("🗑️ Drop Leakage Columns (Promo Codes, IDs):", available_drop_cols)
+        target_col = st.selectbox("🎯 Select Target Column to Predict:", all_cols, index=len(all_cols)-1)
         
         if st.button("🚀 Initialize Training Pipeline", type="primary"):
             with st.spinner("Processing Pipeline & Training Model..."):
                 try:
-                    # Target Mapper
                     if df_cleaned[target_col].dtype == 'object':
                         unique_values = sorted(df_cleaned[target_col].dropna().unique().tolist())
                         target_map = {i: v for i, v in enumerate(unique_values)}
@@ -99,18 +93,15 @@ if uploaded_file:
                     else:
                         if os.path.exists("models/target_map.json"): os.remove("models/target_map.json")
 
-                    # ML Prep
-                    df_ml = prepare_for_training(df_cleaned, drop_columns=drop_cols)
+                    df_ml = prepare_for_training(df_cleaned) 
                     os.makedirs("data/processed", exist_ok=True)
                     df_ml.to_csv("data/processed/clean_data.csv", index=False)
                     
-                    # Train
                     metrics = train_model("data/processed/clean_data.csv", "models/model.pkl", target_col)
                     
                     st.success(f"✅ Training Complete! Model optimized for target: '{target_col}'")
                     st.balloons()
                     
-                    # Show ONLY Metrics (No Champion Model UI)
                     if "accuracy" in metrics:
                         st.metric("🎯 Accuracy", f"{metrics['accuracy']}%")
                     elif "r2_score" in metrics:
@@ -120,7 +111,7 @@ if uploaded_file:
                     st.error(f"❌ Pipeline Error: {e}")
 
     # ==========================================
-    # TAB 3: PREDICTION & XAI
+    # TAB 3: PREDICTION & XAI (SIDE-BY-SIDE LAYOUT)
     # ==========================================
     with tab3:
         st.subheader("🔮 Inference & Explainability")
@@ -163,56 +154,84 @@ if uploaded_file:
                         
                         # 1. PREDICTION RESULT
                         st.success(f"💡 Prediction Result: **{final_output}**")
+                        st.markdown("<br>", unsafe_allow_html=True)
                         
-                        # 2. XAI (EXPLAINABLE AI)
-                        st.write("### 🧠 AI X-Ray (Why did I predict this?)")
-                        with st.spinner("Scanning AI Brain..."):
-                            try:
-                                background_data = df_schema.drop(columns=[target_col])
-                                explainer = shap.Explainer(model, background_data)
-                                shap_values = explainer(input_df)
-                                
-                                # Plotting Fix for Multi-class output (like male/female)
-                                fig, ax = plt.subplots(figsize=(8, 4))
-                                
-                                # Extract explanation for the first instance
-                                exp = shap_values[0]
-                                
-                                # If it's a matrix (multi-class), select the first class's explanation
-                                if len(exp.shape) > 1:
-                                    exp = exp[:, 0]
+                        # ✨ NEW LAYOUT: SIDE-BY-SIDE COLUMNS FOR XAI AND DONUT CHART ✨
+                        col_xai, col_donut = st.columns(2)
+                        
+                        # 2. XAI (EXPLAINABLE AI) - LEFT COLUMN
+                        with col_xai:
+                            st.write("### 🧠 AI X-Ray (Why?)")
+                            with st.spinner("Scanning..."):
+                                try:
+                                    # --- SMART SHAP EXPLAINER ---
+                                    model_name = type(model).__name__
                                     
-                                shap.plots.waterfall(exp, show=False)
-                                plt.tight_layout()
-                                st.pyplot(fig)
-                                
-                                st.info("👆 **How to read this:** Red bars ne model ko is result ki taraf push kiya, aur Blue bars is result ke against the.")
-                            except Exception as e:
-                                st.warning(f"⚠️ XAI is model ke liye abhi support nahi kar raha. (Error: {e})")
-                                
-                        st.markdown("---")
-                        
-                        # 3. DONUT CHART (If probability exists)
-                        if hasattr(model, "predict_proba"):
-                            proba = model.predict_proba(input_df)[0]
-                            labels = [target_map[str(i)] for i in range(len(proba))] if target_map else [f"Class {i}" for i in range(len(proba))]
-                                
-                            chart_data = pd.DataFrame({"Category": labels, "Confidence": proba})
+                                    # Agar model Tree-based hai (Forest ya Boosting)
+                                    if "Forest" in model_name or "Boosting" in model_name:
+                                        explainer = shap.TreeExplainer(model)
+                                        shap_vals = explainer.shap_values(input_df)
+                                        
+                                        # Multi-class output fix
+                                        if isinstance(shap_vals, list):
+                                            pred_idx = int(model.predict(input_df)[0])
+                                            vals = shap_vals[pred_idx][0]
+                                        else:
+                                            vals = shap_vals[0]
+                                            if len(vals.shape) > 1:
+                                                vals = vals[:, 0]
+                                                
+                                    # Agar Linear ya Logistic model hai
+                                    else:
+                                        background_data = df_schema.drop(columns=[target_col]).fillna(0)
+                                        explainer = shap.LinearExplainer(model, background_data)
+                                        vals = explainer.shap_values(input_df)[0]
 
-                            base = alt.Chart(chart_data).encode(theta=alt.Theta("Confidence", stack=True))
-                            pie = base.mark_arc(outerRadius=120, innerRadius=80).encode(
-                                color=alt.Color("Category"),
-                                order=alt.Order("Confidence", sort="descending"),
-                                tooltip=["Category", alt.Tooltip("Confidence", format=".1%")]
-                            )
-                            text = base.mark_text(radius=140).encode(
-                                text=alt.Text("Confidence", format=".1%"),
-                                order=alt.Order("Confidence", sort="descending"),
-                                color=alt.value("white")
-                            )
-                            
+                                    features = input_df.columns
+                                    
+                                    # Create dataframe for Altair
+                                    df_shap = pd.DataFrame({'Feature': features, 'Impact': vals})
+                                    df_shap['Abs_Impact'] = df_shap['Impact'].abs()
+                                    df_shap = df_shap.sort_values(by='Abs_Impact', ascending=False).head(5) # Top 5 Features
+                                    df_shap['Color'] = np.where(df_shap['Impact'] > 0, '#ff0051', '#008bfb') # Red/Blue
+                                    
+                                    # NATIVE ALTAIR CHART FOR SHAP (No more monstrous Matplotlib!)
+                                    bar_chart = alt.Chart(df_shap).mark_bar().encode(
+                                        x=alt.X('Impact:Q', title='Impact on Prediction'),
+                                        y=alt.Y('Feature:N', sort='-x', title=''),
+                                        color=alt.Color('Color:N', scale=None),
+                                        tooltip=['Feature', 'Impact']
+                                    ).properties(height=250)
+                                    
+                                    st.altair_chart(bar_chart, use_container_width=True)
+                                    st.caption("🟥 **Red:** Pushed prediction higher. | 🟦 **Blue:** Pushed prediction lower.")
+                                except Exception as e:
+                                    st.warning(f"⚠️ XAI not supported for {type(model).__name__}. ({e})")
+                                    
+                        # 3. DONUT CHART - RIGHT COLUMN
+                        with col_donut:
                             st.write("### 📊 Confidence Analysis")
-                            st.altair_chart(pie + text, use_container_width=True)
+                            if hasattr(model, "predict_proba"):
+                                proba = model.predict_proba(input_df)[0]
+                                labels = [target_map[str(i)] for i in range(len(proba))] if target_map else [f"Class {i}" for i in range(len(proba))]
+                                    
+                                chart_data = pd.DataFrame({"Category": labels, "Confidence": proba})
+
+                                base = alt.Chart(chart_data).encode(theta=alt.Theta("Confidence", stack=True))
+                                pie = base.mark_arc(outerRadius=100, innerRadius=60).encode(
+                                    color=alt.Color("Category"),
+                                    order=alt.Order("Confidence", sort="descending"),
+                                    tooltip=["Category", alt.Tooltip("Confidence", format=".1%")]
+                                )
+                                text = base.mark_text(radius=120).encode(
+                                    text=alt.Text("Confidence", format=".1%"),
+                                    order=alt.Order("Confidence", sort="descending"),
+                                    color=alt.value("white")
+                                )
+                                
+                                st.altair_chart(pie + text, use_container_width=True)
+                            else:
+                                st.info("Confidence scores are not available for this algorithm.")
 
             except Exception as e:
                 st.error(f"Error loading model: {e}")
