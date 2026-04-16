@@ -74,7 +74,7 @@ if uploaded_file:
         )
 
     # ==========================================
-    # TAB 2: TRAIN MODEL (CLEANED UI)
+    # TAB 2: TRAIN MODEL
     # ==========================================
     with tab2:
         st.subheader("⚙️ Step 2: Train AI Model")
@@ -135,7 +135,8 @@ if uploaded_file:
                     cols = st.columns(2)
                     for i, col in enumerate(feature_cols):
                         with cols[i % 2]:
-                            input_data[col] = st.number_input(f"{col}", value=0.0)
+                            # ✨ YAHAN CHANGE KIYA HAI: step=1.0 add kar diya ✨
+                            input_data[col] = st.number_input(f"{col}", value=0.0, step=1.0)
                     
                     if st.form_submit_button("Run Prediction"):
                         input_df = pd.DataFrame([input_data])
@@ -156,23 +157,20 @@ if uploaded_file:
                         st.success(f"💡 Prediction Result: **{final_output}**")
                         st.markdown("<br>", unsafe_allow_html=True)
                         
-                        # ✨ NEW LAYOUT: SIDE-BY-SIDE COLUMNS FOR XAI AND DONUT CHART ✨
                         col_xai, col_donut = st.columns(2)
+                        xai_vals = None 
                         
                         # 2. XAI (EXPLAINABLE AI) - LEFT COLUMN
                         with col_xai:
                             st.write("### 🧠 AI X-Ray (Why?)")
                             with st.spinner("Scanning..."):
                                 try:
-                                    # --- SMART SHAP EXPLAINER ---
                                     model_name = type(model).__name__
                                     
-                                    # Agar model Tree-based hai (Forest ya Boosting)
                                     if "Forest" in model_name or "Boosting" in model_name:
                                         explainer = shap.TreeExplainer(model)
                                         shap_vals = explainer.shap_values(input_df)
                                         
-                                        # Multi-class output fix
                                         if isinstance(shap_vals, list):
                                             pred_idx = int(model.predict(input_df)[0])
                                             vals = shap_vals[pred_idx][0]
@@ -180,22 +178,19 @@ if uploaded_file:
                                             vals = shap_vals[0]
                                             if len(vals.shape) > 1:
                                                 vals = vals[:, 0]
-                                                
-                                    # Agar Linear ya Logistic model hai
                                     else:
                                         background_data = df_schema.drop(columns=[target_col]).fillna(0)
                                         explainer = shap.LinearExplainer(model, background_data)
                                         vals = explainer.shap_values(input_df)[0]
 
+                                    xai_vals = vals 
                                     features = input_df.columns
                                     
-                                    # Create dataframe for Altair
                                     df_shap = pd.DataFrame({'Feature': features, 'Impact': vals})
                                     df_shap['Abs_Impact'] = df_shap['Impact'].abs()
-                                    df_shap = df_shap.sort_values(by='Abs_Impact', ascending=False).head(5) # Top 5 Features
-                                    df_shap['Color'] = np.where(df_shap['Impact'] > 0, '#ff0051', '#008bfb') # Red/Blue
+                                    df_shap = df_shap.sort_values(by='Abs_Impact', ascending=False).head(5) 
+                                    df_shap['Color'] = np.where(df_shap['Impact'] > 0, '#ff0051', '#008bfb') 
                                     
-                                    # NATIVE ALTAIR CHART FOR SHAP (No more monstrous Matplotlib!)
                                     bar_chart = alt.Chart(df_shap).mark_bar().encode(
                                         x=alt.X('Impact:Q', title='Impact on Prediction'),
                                         y=alt.Y('Feature:N', sort='-x', title=''),
@@ -208,10 +203,10 @@ if uploaded_file:
                                 except Exception as e:
                                     st.warning(f"⚠️ XAI not supported for {type(model).__name__}. ({e})")
                                     
-                        # 3. DONUT CHART - RIGHT COLUMN
+                        # 3. DONUT CHART OR FEATURE INFLUENCE - RIGHT COLUMN
                         with col_donut:
-                            st.write("### 📊 Confidence Analysis")
                             if hasattr(model, "predict_proba"):
+                                st.write("### 📊 Confidence Analysis")
                                 proba = model.predict_proba(input_df)[0]
                                 labels = [target_map[str(i)] for i in range(len(proba))] if target_map else [f"Class {i}" for i in range(len(proba))]
                                     
@@ -230,8 +225,31 @@ if uploaded_file:
                                 )
                                 
                                 st.altair_chart(pie + text, use_container_width=True)
+                                
                             else:
-                                st.info("Confidence scores are not available for this algorithm.")
+                                st.write("### ⚖️ Feature Influence")
+                                if xai_vals is not None:
+                                    pos_force = sum([v for v in xai_vals if v > 0])
+                                    neg_force = sum([abs(v) for v in xai_vals if v < 0])
+                                    
+                                    if pos_force == 0 and neg_force == 0:
+                                        st.info("Prediction is at baseline. No major influencing features.")
+                                    else:
+                                        force_data = pd.DataFrame({
+                                            "Impact": ["Increasing Value ⬆️", "Decreasing Value ⬇️"],
+                                            "Magnitude": [pos_force, neg_force]
+                                        })
+                                        
+                                        base = alt.Chart(force_data).encode(theta=alt.Theta("Magnitude", stack=True))
+                                        pie = base.mark_arc(outerRadius=100, innerRadius=60).encode(
+                                            color=alt.Color("Impact", scale=alt.Scale(domain=["Increasing Value ⬆️", "Decreasing Value ⬇️"], range=["#ff0051", "#008bfb"])),
+                                            tooltip=["Impact", "Magnitude"]
+                                        )
+                                        
+                                        st.altair_chart(pie, use_container_width=True)
+                                        st.caption("Overall balance of features pushing the prediction UP 🟥 vs DOWN 🟦.")
+                                else:
+                                    st.info("Prediction insights are currently being generated.")
 
             except Exception as e:
                 st.error(f"Error loading model: {e}")
