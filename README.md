@@ -1,5 +1,16 @@
 # Data-Agnostic MLOps Pipeline
 
+## 🤝 Co-built Project
+
+This project was co-built by a 4-member team:
+
+- [Tirth Patel (@tirthpatel90)](https://github.com/tirthpatel90): Led pipeline architecture, orchestration and the configuration engine.
+- [Hitesh (@hitesh0106)](https://github.com/hitesh0106): Contributed to pipeline modules.
+- [Prince (@prince3235)](https://github.com/prince3235): Contributed to data handling and machine learning algorithms.
+- [Riya (@riya119215)](https://github.com/riya119215): Contributed to data preprocessing work.
+
+Contribution breakdown is available in the [commit history](https://github.com/tirthpatel90/Data-agnostic-MLOps-pipeline/commits/main).
+
 > ⚠️ **Note:** This project is currently under active development. Some features may be incomplete or subject to change.
 
 A modular and extensible MLOps pipeline that automatically handles different data formats and performs end-to-end data processing and model training.
@@ -99,17 +110,6 @@ This will:
 | `preprocess.py` | Handles missing values and encodes categorical columns |
 | `train.py` | Trains Logistic Regression model |
 | `validate_data.py` | Checks for missing values in dataset |
-
----
-
-## � Team Members
-
-| Name | GitHub |
-|------|--------|
-| Tirth Patel | [@tirthpatel90](https://github.com/tirthpatel90) |
-| Hitesh Prajapati | [@hprajapati1606-ux](https://github.com/hprajapati1606-ux) |
-| Prince Patel | [@prince3235](https://github.com/prince3235) |
-| Riya Patel | [@riya119215](https://github.com/riya119215) |
 
 ---
 
